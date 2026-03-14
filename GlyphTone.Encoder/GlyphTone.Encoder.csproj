@@ -6,8 +6,15 @@
     <RootNamespace>GlyphTone</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>GlyphTone.Encoder</PackageId>
+    <Authors>jrolofsson</Authors>
     <Description>Deterministic TOON encoder for .NET.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/jrolofsson/GlyphToon</PackageProjectUrl>
+    <PackageTags>TOON;JSON;serialization;encoder;dotnet</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/jrolofsson/GlyphToon</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>

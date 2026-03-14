@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
           cache: true
@@ -53,7 +53,7 @@ jobs:
           -p:Version=${{ env.PACKAGE_VERSION }}
 
       - name: Upload package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: GlyphTone.Encoder-${{ env.PACKAGE_VERSION }}-nupkg
           path: GlyphTone.Encoder/bin/Release/*.nupkg

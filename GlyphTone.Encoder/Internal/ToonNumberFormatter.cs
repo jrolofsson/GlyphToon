@@ -8,7 +8,7 @@ internal static class ToonNumberFormatter
     private static readonly BigInteger MaxInt128 = (BigInteger)Int128.MaxValue;
     private static readonly BigInteger MinInt128 = (BigInteger)Int128.MinValue;
 
-    public static ToonValue FormatNumber(object value)
+    public static IToonValue FormatNumber(object value)
     {
         return value switch
         {
@@ -31,7 +31,7 @@ internal static class ToonNumberFormatter
         };
     }
 
-    private static ToonValue FormatFloat(float value)
+    private static IToonValue FormatFloat(float value)
     {
         if (float.IsNaN(value) || float.IsInfinity(value))
         {
@@ -41,7 +41,7 @@ internal static class ToonNumberFormatter
         return new ToonNumberValue(CanonicalizeNumericText(value.ToString("R", CultureInfo.InvariantCulture)));
     }
 
-    private static ToonValue FormatDouble(double value)
+    private static IToonValue FormatDouble(double value)
     {
         if (double.IsNaN(value) || double.IsInfinity(value))
         {
@@ -51,7 +51,7 @@ internal static class ToonNumberFormatter
         return new ToonNumberValue(CanonicalizeNumericText(value.ToString("R", CultureInfo.InvariantCulture)));
     }
 
-    private static ToonValue FormatBigInteger(BigInteger value)
+    private static IToonValue FormatBigInteger(BigInteger value)
     {
         if (value >= MinInt128 && value <= MaxInt128)
         {

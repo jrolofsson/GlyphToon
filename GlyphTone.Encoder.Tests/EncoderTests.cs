@@ -4,6 +4,8 @@ namespace GlyphTone.Tests;
 
 public sealed class EncoderTests
 {
+    private static readonly int[] ExcessiveCollectionPayload = [1, 2, 3];
+
     [Fact]
     public void Serialize_Primitives_UsesCanonicalForms()
     {
@@ -279,6 +281,207 @@ public sealed class EncoderTests
     }
 
     [Fact]
+    public void Serialize_DisabledReflectionObjectSerialization_RejectsPocos()
+    {
+        var options = CreateCamelCaseOptions();
+        options.AllowReflectionObjectSerialization = false;
+
+        var exception = Assert.Throws<ToonEncodingException>(() => GlyphTone.Encoder.Serialize(
+            new SamplePerson { Active = true, Id = 1, Name = "Ada" },
+            options));
+
+        Assert.Contains("Reflection-based object serialization is disabled", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Serialize_DisabledReflectionObjectSerialization_StillAllowsDictionaries()
+    {
+        var options = new EncoderOptions
+        {
+            AllowReflectionObjectSerialization = false,
+        };
+
+        var result = GlyphTone.Encoder.Serialize(new Dictionary<string, object?> { ["id"] = 1 }, options);
+        Assert.Equal("id: 1", result);
+    }
+
+    [Fact]
+    public void Serialize_ExcessiveDepth_IsRejectedBeforeStackOverflow()
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["level1"] = new Dictionary<string, object?>
+            {
+                ["level2"] = new Dictionary<string, object?>
+                {
+                    ["level3"] = new Dictionary<string, object?>
+                    {
+                        ["level4"] = 1,
+                    },
+                },
+            },
+        };
+
+        var options = new EncoderOptions
+        {
+            MaxDepth = 2,
+        };
+
+        var exception = Assert.Throws<ToonEncodingException>(() => GlyphTone.Encoder.Serialize(payload, options));
+        Assert.Contains("Maximum object graph depth 2 exceeded", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Serialize_ExcessiveCollectionSize_IsRejected()
+    {
+        var options = new EncoderOptions
+        {
+            MaxCollectionItemCount = 2,
+        };
+
+        var exception = Assert.Throws<ToonEncodingException>(() => GlyphTone.Encoder.Serialize(ExcessiveCollectionPayload, options));
+        Assert.Contains("Maximum collection item count 2 exceeded", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Serialize_ExcessiveObjectMemberCount_IsRejected()
+    {
+        var options = new EncoderOptions
+        {
+            MaxObjectMemberCount = 2,
+        };
+
+        var exception = Assert.Throws<ToonEncodingException>(() => GlyphTone.Encoder.Serialize(
+            new Dictionary<string, object?>
+            {
+                ["alpha"] = 1,
+                ["beta"] = 2,
+                ["gamma"] = 3,
+            },
+            options));
+
+        Assert.Contains("Maximum object member count 2 exceeded", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Serialize_InvalidCollectionLimit_IsRejected()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => GlyphTone.Encoder.Serialize(
+            1,
+            new EncoderOptions
+            {
+                MaxCollectionItemCount = 0,
+            }));
+
+        Assert.Contains("MaxCollectionItemCount", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Serialize_InvalidObjectMemberLimit_IsRejected()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => GlyphTone.Encoder.Serialize(
+            1,
+            new EncoderOptions
+            {
+                MaxObjectMemberCount = 0,
+            }));
+
+        Assert.Contains("MaxObjectMemberCount", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Serialize_ExcessiveStringLength_IsRejected()
+    {
+        var options = new EncoderOptions
+        {
+            MaxStringLength = 3,
+        };
+
+        var exception = Assert.Throws<ToonEncodingException>(() => GlyphTone.Encoder.Serialize("abcd", options));
+        Assert.Contains("maximum string length 3", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Serialize_ExcessiveOutputLength_IsRejected()
+    {
+        var options = new EncoderOptions
+        {
+            MaxOutputLength = 4,
+        };
+
+        var exception = Assert.Throws<ToonEncodingException>(() => GlyphTone.Encoder.Serialize(new Dictionary<string, object?> { ["id"] = 1 }, options));
+        Assert.Contains("Maximum output length 4 exceeded", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Serialize_InvalidStringLimit_IsRejected()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => GlyphTone.Encoder.Serialize(
+            1,
+            new EncoderOptions
+            {
+                MaxStringLength = 0,
+            }));
+
+        Assert.Contains("MaxStringLength", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Serialize_InvalidOutputLimit_IsRejected()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => GlyphTone.Encoder.Serialize(
+            1,
+            new EncoderOptions
+            {
+                MaxOutputLength = 0,
+            }));
+
+        Assert.Contains("MaxOutputLength", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CreateHardenedDefaults_ReturnsExpectedSecurityBaseline()
+    {
+        var options = EncoderOptions.CreateHardenedDefaults();
+
+        Assert.False(options.AllowReflectionObjectSerialization);
+        Assert.True(options.StrictMode);
+        Assert.Equal(10_000, options.MaxCollectionItemCount);
+        Assert.Equal(64, options.MaxDepth);
+        Assert.Equal(1_024, options.MaxObjectMemberCount);
+        Assert.Equal(1_000_000, options.MaxOutputLength);
+        Assert.Equal(65_536, options.MaxStringLength);
+    }
+
+    [Fact]
+    public void Serialize_NonStrictMode_RejectsArbitraryNewLineStrings()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => GlyphTone.Encoder.Serialize(
+            new Dictionary<string, object?> { ["id"] = 1 },
+            new EncoderOptions
+            {
+                StrictMode = false,
+                NewLine = "--",
+            }));
+
+        Assert.Contains("either LF", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Serialize_NonStrictMode_RejectsIndentWithNewLines()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => GlyphTone.Encoder.Serialize(
+            new Dictionary<string, object?> { ["id"] = new Dictionary<string, object?> { ["name"] = "Ada" } },
+            new EncoderOptions
+            {
+                StrictMode = false,
+                Indent = " \n ",
+            }));
+
+        Assert.Contains("cannot contain newline", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Serialize_RootMixedArray_UsesListSyntax()
     {
         var payload = new object[]
@@ -305,6 +508,7 @@ public sealed class EncoderTests
     {
         return new EncoderOptions
         {
+            AllowReflectionObjectSerialization = true,
             PropertyNamingPolicy = static name => char.ToLowerInvariant(name[0]) + name[1..],
         };
     }

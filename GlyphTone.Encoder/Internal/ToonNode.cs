@@ -1,10 +1,10 @@
 namespace GlyphTone.Internal;
 
-internal abstract class ToonValue
+internal interface IToonValue
 {
 }
 
-internal abstract class ToonScalarValue : ToonValue;
+internal abstract class ToonScalarValue : IToonValue;
 
 internal sealed class ToonNullValue : ToonScalarValue
 {
@@ -45,17 +45,17 @@ internal sealed class ToonStringValue : ToonScalarValue
     public string Value { get; }
 }
 
-internal sealed class ToonArrayValue : ToonValue
+internal sealed class ToonArrayValue : IToonValue
 {
-    public ToonArrayValue(IReadOnlyList<ToonValue> items)
+    public ToonArrayValue(IReadOnlyList<IToonValue> items)
     {
         Items = items;
     }
 
-    public IReadOnlyList<ToonValue> Items { get; }
+    public IReadOnlyList<IToonValue> Items { get; }
 }
 
-internal sealed class ToonObjectValue : ToonValue
+internal sealed class ToonObjectValue : IToonValue
 {
     public ToonObjectValue(IReadOnlyList<ToonProperty> properties)
     {
@@ -67,7 +67,7 @@ internal sealed class ToonObjectValue : ToonValue
 
 internal sealed class ToonProperty
 {
-    public ToonProperty(string name, ToonValue value)
+    public ToonProperty(string name, IToonValue value)
     {
         Name = name;
         Value = value;
@@ -75,5 +75,5 @@ internal sealed class ToonProperty
 
     public string Name { get; }
 
-    public ToonValue Value { get; }
+    public IToonValue Value { get; }
 }

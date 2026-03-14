@@ -6,6 +6,7 @@ internal sealed class ToonDocumentWriter
 {
     private readonly TextWriter _writer;
     private readonly EncoderOptions _options;
+    private int _charactersWritten;
     private bool _wroteLine;
 
     public ToonDocumentWriter(TextWriter writer, EncoderOptions options)
@@ -14,7 +15,7 @@ internal sealed class ToonDocumentWriter
         _options = options;
     }
 
-    public void Write(ToonValue value)
+    public void Write(IToonValue value)
     {
         switch (value)
         {
@@ -25,7 +26,7 @@ internal sealed class ToonDocumentWriter
                 WriteArray(depth: 0, prefix: string.Empty, key: string.Empty, arrayValue);
                 break;
             case ToonScalarValue scalarValue:
-                _writer.Write(ToonValueFormatter.FormatScalar(scalarValue, ','));
+                WriteText(ToonValueFormatter.FormatScalar(scalarValue, ','));
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported TOON value type '{value.GetType().Name}'.");
@@ -92,7 +93,7 @@ internal sealed class ToonDocumentWriter
         }
     }
 
-    private void WriteListItem(int depth, ToonValue item)
+    private void WriteListItem(int depth, IToonValue item)
     {
         switch (item)
         {
@@ -209,7 +210,7 @@ internal sealed class ToonDocumentWriter
         return true;
     }
 
-    private static bool TryMapRow(string[] columns, ToonValue item, out ToonScalarValue[] orderedRow)
+    private static bool TryMapRow(string[] columns, IToonValue item, out ToonScalarValue[] orderedRow)
     {
         orderedRow = [];
         if (item is not ToonObjectValue objectValue || objectValue.Properties.Count != columns.Length)
@@ -246,16 +247,36 @@ internal sealed class ToonDocumentWriter
     {
         if (_wroteLine)
         {
-            _writer.Write(_options.NewLine);
+            WriteText(_options.NewLine);
         }
 
         for (var index = 0; index < depth; index++)
         {
-            _writer.Write(_options.Indent);
+            WriteText(_options.Indent);
         }
 
-        _writer.Write(content);
+        WriteText(content);
         _wroteLine = true;
+    }
+
+    private void WriteText(string text)
+    {
+        EnsureOutputLength(text.Length);
+        _writer.Write(text);
+        _charactersWritten += text.Length;
+    }
+
+    private void EnsureOutputLength(int additionalLength)
+    {
+        if (additionalLength < 0)
+        {
+            throw new InvalidOperationException("Additional output length cannot be negative.");
+        }
+
+        if (_charactersWritten > _options.MaxOutputLength - additionalLength)
+        {
+            throw new ToonEncodingException($"Maximum output length {_options.MaxOutputLength} exceeded while writing TOON text.");
+        }
     }
 
     private static string BuildArrayHeader(string key, int count)

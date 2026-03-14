@@ -76,6 +76,28 @@ Encoder.Serialize(
     writer);
 ```
 
+### Default vs Hardened Usage
+
+Default configuration is appropriate when you control the input shapes and want the broadest feature set, including POCO reflection:
+
+```csharp
+var toon = Encoder.Serialize(data, new EncoderOptions
+{
+    PropertyNamingPolicy = static name => char.ToLowerInvariant(name[0]) + name[1..],
+});
+```
+
+For user-influenced, plugin-driven, or multi-tenant inputs, start from the hardened preset and only relax limits deliberately:
+
+```csharp
+var options = EncoderOptions.CreateHardenedDefaults();
+options.MaxOutputLength = 2_000_000;
+
+var toon = Encoder.Serialize(data, options);
+```
+
+The hardened preset keeps strict formatting enabled, disables reflection-based POCO serialization, and applies conservative limits to depth, collection size, object width, string size, and total output length.
+
 Nested object example:
 
 ```csharp
@@ -108,8 +130,31 @@ tags[2]: llm,toon
 
 `EncoderOptions` exposes the main formatting controls:
 
+| Option | Purpose | Primary Role |
+| --- | --- | --- |
+| `Indent` | Indentation unit for nested structures | Formatting |
+| `NewLine` | Line separator between emitted TOON lines | Formatting |
+| `PropertyNamingPolicy` | Transforms reflected member names before emission | API ergonomics |
+| `IgnoreNullValues` | Omits null object members | Output shaping |
+| `SortProperties` | Sorts reflected members for deterministic output | Determinism |
+| `SortDictionaryKeys` | Sorts dictionary keys ordinally | Determinism |
+| `PreferTabularArrays` | Uses tabular form for eligible object arrays | Format efficiency |
+| `IncludeFields` | Includes public fields in reflection-based serialization | API ergonomics |
+| `StrictMode` | Enforces spec-aligned formatting constraints | Security / correctness |
+| `AllowReflectionObjectSerialization` | Enables or disables POCO reflection | Security boundary |
+| `MaxDepth` | Limits object graph nesting depth | Security control |
+| `MaxCollectionItemCount` | Limits array and enumerable size | Security control |
+| `MaxObjectMemberCount` | Limits object and dictionary width | Security control |
+| `MaxStringLength` | Limits individual key and string size | Security control |
+| `MaxOutputLength` | Limits total emitted document size | Security control |
+
 - `Indent`: indentation unit for nested structures. Strict mode requires spaces only.
-- `NewLine`: line separator between TOON lines. Strict mode requires `\n`.
+- `MaxCollectionItemCount`: maximum allowed item count for any enumerable or array.
+- `NewLine`: line separator between TOON lines. Supported values are `\n` and `\r\n`; strict mode requires `\n`.
+- `MaxDepth`: maximum allowed object graph depth during normalization.
+- `MaxObjectMemberCount`: maximum allowed member count for any serialized object.
+- `MaxOutputLength`: maximum allowed number of characters emitted for one TOON document.
+- `MaxStringLength`: maximum allowed number of characters in any serialized key or string value.
 - `PropertyNamingPolicy`: optional hook for reflected property and field names.
 - `IgnoreNullValues`: omit null object members.
 - `SortProperties`: sort reflected members by effective name for deterministic output.
@@ -117,6 +162,7 @@ tags[2]: llm,toon
 - `PreferTabularArrays`: use tabular arrays when every row is a homogeneous primitive-valued object.
 - `StrictMode`: enforce strict encoder-side constraints for indentation and line endings.
 - `IncludeFields`: include public fields in addition to public readable properties.
+- `AllowReflectionObjectSerialization`: disable reflection-based POCO serialization in hardened environments.
 
 ## Supported Inputs
 
@@ -135,6 +181,22 @@ tags[2]: llm,toon
 - Empty arrays serialize as `[0]:`.
 - Tabular arrays are used only when the collection is non-empty, every item is an object, every object has the same field set, and every field value is a primitive.
 - Circular references are detected and reported as `ToonEncodingException`.
+- Excessive nesting is rejected once `MaxDepth` is exceeded, preventing stack-overflow style payloads.
+- Excessive collection sizes are rejected once `MaxCollectionItemCount` is exceeded.
+- Excessive object widths are rejected once `MaxObjectMemberCount` is exceeded.
+- Excessive string/key sizes are rejected once `MaxStringLength` is exceeded.
+- Excessive total output is rejected once `MaxOutputLength` is exceeded.
+- Reflection-based POCO serialization can be disabled when callers only want dictionary/array/primitive inputs.
+
+## Security
+
+For security guidance and hardened deployment recommendations, see [SECURITY.md](SECURITY.md).
+
+You can also start from a conservative preset:
+
+```csharp
+var options = EncoderOptions.CreateHardenedDefaults();
+```
 
 ## Notes on Scope
 

@@ -18,16 +18,18 @@ internal sealed class ToonValueNormalizer
         _objectInspector = objectInspector;
     }
 
-    public ToonValue Normalize(object? value) => NormalizeCore(value, "$");
+    public IToonValue Normalize(object? value) => NormalizeCore(value, "$", 0);
 
-    private ToonValue NormalizeCore(object? value, string path)
+    private IToonValue NormalizeCore(object? value, string path, int depth)
     {
+        EnsureDepth(depth, path);
+
         if (value is null)
         {
             return ToonNullValue.Instance;
         }
 
-        if (TryNormalizeIntrinsic(value, path, out var intrinsicValue))
+        if (TryNormalizeIntrinsic(value, path, depth, out var intrinsicValue))
         {
             return intrinsicValue;
         }
@@ -42,29 +44,36 @@ internal sealed class ToonValueNormalizer
             throw new ToonEncodingException($"Unsupported type at path '{path}': System.Type instances cannot be encoded as TOON.");
         }
 
-        if (TryNormalizeDictionary(value, path, out var dictionaryValue))
+        if (TryNormalizeDictionary(value, path, depth + 1, out var dictionaryValue))
         {
             return dictionaryValue;
         }
 
         if (value is IEnumerable enumerable)
         {
-            return NormalizeEnumerable(enumerable, value, path);
+            return NormalizeEnumerable(enumerable, value, path, depth + 1);
         }
 
-        return NormalizeObject(value, path);
+        if (!_options.AllowReflectionObjectSerialization)
+        {
+            throw new ToonEncodingException($"Reflection-based object serialization is disabled at path '{path}'. Use dictionaries/arrays/primitives or enable AllowReflectionObjectSerialization.");
+        }
+
+        return NormalizeObject(value, path, depth + 1);
     }
 
-    private bool TryNormalizeIntrinsic(object value, string path, out ToonValue normalizedValue)
+    private bool TryNormalizeIntrinsic(object value, string path, int depth, out IToonValue normalizedValue)
     {
         switch (value)
         {
             case string stringValue:
+                EnsureTextLength(stringValue, path, isKey: false);
                 EnsureEncodableText(stringValue, path, isKey: false);
                 normalizedValue = new ToonStringValue(stringValue);
                 return true;
             case char character:
                 var singleCharacter = character.ToString();
+                EnsureTextLength(singleCharacter, path, isKey: false);
                 EnsureEncodableText(singleCharacter, path, isKey: false);
                 normalizedValue = new ToonStringValue(singleCharacter);
                 return true;
@@ -72,19 +81,20 @@ internal sealed class ToonValueNormalizer
                 normalizedValue = new ToonBooleanValue(booleanValue);
                 return true;
             case DateTime dateTime:
-                normalizedValue = NormalizeCore(dateTime.ToString("O", CultureInfo.InvariantCulture), path);
+                normalizedValue = NormalizeCore(dateTime.ToString("O", CultureInfo.InvariantCulture), path, depth);
                 return true;
             case DateTimeOffset dateTimeOffset:
-                normalizedValue = NormalizeCore(dateTimeOffset.ToString("O", CultureInfo.InvariantCulture), path);
+                normalizedValue = NormalizeCore(dateTimeOffset.ToString("O", CultureInfo.InvariantCulture), path, depth);
                 return true;
             case Guid guid:
-                normalizedValue = NormalizeCore(guid.ToString("D", CultureInfo.InvariantCulture), path);
+                normalizedValue = NormalizeCore(guid.ToString("D", CultureInfo.InvariantCulture), path, depth);
                 return true;
             case Uri uri:
-                normalizedValue = NormalizeCore(uri.OriginalString, path);
+                normalizedValue = NormalizeCore(uri.OriginalString, path, depth);
                 return true;
             case Enum enumValue:
                 var enumText = enumValue.ToString();
+                EnsureTextLength(enumText, path, isKey: false);
                 EnsureEncodableText(enumText, path, isKey: false);
                 normalizedValue = new ToonStringValue(enumText);
                 return true;
@@ -93,28 +103,30 @@ internal sealed class ToonValueNormalizer
         }
     }
 
-    private ToonArrayValue NormalizeEnumerable(IEnumerable enumerable, object originalValue, string path)
+    private ToonArrayValue NormalizeEnumerable(IEnumerable enumerable, object originalValue, string path, int depth)
     {
         return WithReferenceTracking(originalValue, path, static (normalizer, state) =>
         {
-            var items = new List<ToonValue>();
+            var items = new List<IToonValue>();
             var index = 0;
             foreach (var item in state.Enumerable)
             {
-                items.Add(normalizer.NormalizeCore(item, $"{state.Path}[{index}]"));
+                normalizer.EnsureCollectionItemCount(index + 1, state.Path);
+                items.Add(normalizer.NormalizeCore(item, $"{state.Path}[{index}]", state.Depth));
                 index++;
             }
 
             return new ToonArrayValue(items);
-        }, (Enumerable: enumerable, Path: path));
+        }, (Enumerable: enumerable, Path: path, Depth: depth));
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Uses serializer instance state through tracked callbacks.")]
-    private ToonObjectValue NormalizeObject(object value, string path)
+    private ToonObjectValue NormalizeObject(object value, string path, int depth)
     {
         return WithReferenceTracking(value, path, static (normalizer, state) =>
         {
             var members = normalizer._objectInspector.GetMembers(state.Value.GetType(), normalizer._options.IncludeFields);
+            normalizer.EnsureObjectMemberCount(members.Count, state.Path);
             var properties = new List<ToonProperty>(members.Count);
             var seenNames = new HashSet<string>(StringComparer.Ordinal);
 
@@ -122,7 +134,7 @@ internal sealed class ToonValueNormalizer
             {
                 var memberValue = ReadMemberValue(state.Value, state.Path, member);
                 var propertyPath = BuildObjectPath(state.Path, member.Name);
-                var normalizedValue = normalizer.NormalizeCore(memberValue, propertyPath);
+                var normalizedValue = normalizer.NormalizeCore(memberValue, propertyPath, state.Depth);
                 if (normalizer._options.IgnoreNullValues && normalizedValue is ToonNullValue)
                 {
                     continue;
@@ -143,7 +155,7 @@ internal sealed class ToonValueNormalizer
             }
 
             return new ToonObjectValue(properties);
-        }, (Value: value, Path: path));
+        }, (Value: value, Path: path, Depth: depth));
     }
 
     private static object? ReadMemberValue(object instance, string path, ToonObjectInspector.MemberAccessor member)
@@ -162,7 +174,7 @@ internal sealed class ToonValueNormalizer
         }
     }
 
-    private static bool TryNormalizeNumber(object value, out ToonValue normalizedValue)
+    private static bool TryNormalizeNumber(object value, out IToonValue normalizedValue)
     {
         switch (value)
         {
@@ -175,7 +187,7 @@ internal sealed class ToonValueNormalizer
         }
     }
 
-    private bool TryNormalizeDictionary(object value, string path, out ToonValue normalizedValue)
+    private bool TryNormalizeDictionary(object value, string path, int depth, out IToonValue normalizedValue)
     {
         if (value is IDictionary dictionary)
         {
@@ -187,8 +199,8 @@ internal sealed class ToonValueNormalizer
                     entries.Add(new KeyValuePair<string, object?>(ConvertDictionaryKey(entry.Key, state.Path), entry.Value));
                 }
 
-                return normalizer.NormalizeDictionaryEntries(entries, state.Path);
-            }, (Dictionary: dictionary, Path: path));
+                return normalizer.NormalizeDictionaryEntries(entries, state.Path, state.Depth);
+            }, (Dictionary: dictionary, Path: path, Depth: depth));
             return true;
         }
 
@@ -221,23 +233,25 @@ internal sealed class ToonValueNormalizer
                 entries.Add(new KeyValuePair<string, object?>(ConvertDictionaryKey(key, state.Path), dictionaryValue));
             }
 
-            return normalizer.NormalizeDictionaryEntries(entries, state.Path);
-        }, (Value: value, Path: path));
+            return normalizer.NormalizeDictionaryEntries(entries, state.Path, state.Depth);
+        }, (Value: value, Path: path, Depth: depth));
         return true;
     }
 
-    private ToonObjectValue NormalizeDictionaryEntries(List<KeyValuePair<string, object?>> entries, string path)
+    private ToonObjectValue NormalizeDictionaryEntries(List<KeyValuePair<string, object?>> entries, string path, int depth)
     {
         if (_options.SortDictionaryKeys)
         {
             entries.Sort(static (left, right) => StringComparer.Ordinal.Compare(left.Key, right.Key));
         }
 
+        EnsureObjectMemberCount(entries.Count, path);
         var properties = new List<ToonProperty>(entries.Count);
         var seenNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in entries)
         {
             var keyPath = BuildObjectPath(path, entry.Key);
+            EnsureTextLength(entry.Key, keyPath, isKey: true);
             EnsureEncodableText(entry.Key, keyPath, isKey: true);
 
             if (!seenNames.Add(entry.Key))
@@ -245,7 +259,7 @@ internal sealed class ToonValueNormalizer
                 throw new ToonEncodingException($"Duplicate dictionary key '{entry.Key}' encountered at path '{path}'.");
             }
 
-            var normalizedValue = NormalizeCore(entry.Value, keyPath);
+            var normalizedValue = NormalizeCore(entry.Value, keyPath, depth);
             if (_options.IgnoreNullValues && normalizedValue is ToonNullValue)
             {
                 continue;
@@ -261,6 +275,7 @@ internal sealed class ToonValueNormalizer
     {
         if (_options.PropertyNamingPolicy is null)
         {
+            EnsureTextLength(name, path, isKey: true);
             EnsureEncodableText(name, path, isKey: true);
             return name;
         }
@@ -271,6 +286,7 @@ internal sealed class ToonValueNormalizer
             throw new ToonEncodingException($"Property naming policy returned null for member '{name}' at path '{path}'.");
         }
 
+        EnsureTextLength(transformed, path, isKey: true);
         EnsureEncodableText(transformed, path, isKey: true);
         return transformed;
     }
@@ -332,6 +348,41 @@ internal sealed class ToonValueNormalizer
                 var label = isKey ? "Key" : "String";
                 throw new ToonEncodingException($"{label} at path '{path}' contains unsupported control character U+{(int)character:X4}.");
             }
+        }
+    }
+
+    private void EnsureTextLength(string value, string path, bool isKey)
+    {
+        if (value.Length <= _options.MaxStringLength)
+        {
+            return;
+        }
+
+        var label = isKey ? "Key" : "String";
+        throw new ToonEncodingException($"{label} at path '{path}' exceeds the configured maximum string length {_options.MaxStringLength}.");
+    }
+
+    private void EnsureDepth(int depth, string path)
+    {
+        if (depth > _options.MaxDepth)
+        {
+            throw new ToonEncodingException($"Maximum object graph depth {_options.MaxDepth} exceeded at path '{path}'.");
+        }
+    }
+
+    private void EnsureCollectionItemCount(int count, string path)
+    {
+        if (count > _options.MaxCollectionItemCount)
+        {
+            throw new ToonEncodingException($"Maximum collection item count {_options.MaxCollectionItemCount} exceeded at path '{path}'.");
+        }
+    }
+
+    private void EnsureObjectMemberCount(int count, string path)
+    {
+        if (count > _options.MaxObjectMemberCount)
+        {
+            throw new ToonEncodingException($"Maximum object member count {_options.MaxObjectMemberCount} exceeded at path '{path}'.");
         }
     }
 

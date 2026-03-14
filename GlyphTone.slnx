@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="GlyphTone.Encoder.Tests/GlyphTone.Encoder.Tests.csproj" />
+  <Project Path="GlyphTone.Encoder/GlyphTone.Encoder.csproj" />
+</Solution>

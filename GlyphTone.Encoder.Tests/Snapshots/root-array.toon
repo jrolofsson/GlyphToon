@@ -1,0 +1,8 @@
+[2]:
+  - id: 1
+    meta:
+      score: 9.5
+    name: Ada
+  - id: 2
+    name: Bob
+    tags[2]: admin,ops

@@ -1,7 +1,7 @@
 # GlyphTone.Encoder
 
-[![CI](https://github.com/jrolofsson/GlyphToon/actions/workflows/ci.yml/badge.svg)](https://github.com/jrolofsson/GlyphToon/actions/workflows/ci.yml)
-[![Publish Package](https://github.com/jrolofsson/GlyphToon/actions/workflows/publish-package.yml/badge.svg)](https://github.com/jrolofsson/GlyphToon/actions/workflows/publish-package.yml)
+[![CI](https://github.com/jrolofsson/GlyphToon/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jrolofsson/GlyphToon/actions/workflows/ci.yml)
+[![Publish Package](https://github.com/jrolofsson/GlyphToon/actions/workflows/publish-package.yml/badge.svg?branch=main)](https://github.com/jrolofsson/GlyphToon/actions/workflows/publish-package.yml)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
